@@ -4,7 +4,6 @@ from datetime import datetime
 from ocr_helper import extract_text_from_image
 
 def get_accusative(event_type):
-    """Возвращает событие в винительном падеже для фразы 'не пришёл на ...'"""
     exceptions = {
         "Потасовка": "Потасовку",
         "Турнир": "Турнир",
@@ -13,10 +12,16 @@ def get_accusative(event_type):
     }
     return exceptions.get(event_type, event_type)
 
-# ---------- Проведение события ----------
 def run_event(app):
+    # Если флаг уже True, но окно не открыто – принудительно сбрасываем
     if app.event_dialog_open:
-        return
+        # Проверяем, существует ли окно (по списку дочерних)
+        for child in app.root.winfo_children():
+            if isinstance(child, tk.Toplevel) and child.title() == "Проведение события":
+                return  # окно уже есть, ничего не делаем
+        # Если окна нет, значит флаг застрял – сбрасываем
+        app.event_dialog_open = False
+
     members = app.db.get_all_members()
     if not members:
         messagebox.showinfo("Информация", "В клане нет участников")
@@ -35,6 +40,7 @@ def run_event(app):
     def on_close():
         app.event_dialog_open = False
         dialog.destroy()
+
     dialog.protocol("WM_DELETE_WINDOW", on_close)
 
     main_frame = ttk.Frame(dialog, style='TFrame')
@@ -107,31 +113,47 @@ def run_event(app):
         check_vars[name] = var
 
     def confirm(event=None):
-        event_type = event_var.get()
-        absent_names = []
-        for name, _, _, _ in members:
-            if not check_vars[name].get():
-                absent_names.append(name)
-        if absent_names:
-            event_id = app.db.add_event(event_type, absent_names)
-            for name in absent_names:
-                member_id = app.db.get_member_id_by_name(name)
-                if member_id:
-                    event_acc = get_accusative(event_type)
-                    reason = f"Не пришёл на {event_acc}"
-                    app.db.add_warning(member_id, event_id, reason)
-            messagebox.showinfo("Предупреждения", "Предупреждения получили:\n" + "\n".join(absent_names))
-        else:
-            messagebox.showinfo("Информация", "Все участники присутствовали")
-        app.refresh_list()
+        # Блокируем кнопку сразу
+        btn_confirm.config(state='disabled')
+        try:
+            event_type = event_var.get()
+            absent_names = []
+            for name, _, _, _ in members:
+                if not check_vars[name].get():
+                    absent_names.append(name)
+
+            if absent_names:
+                event_id = app.db.add_event(event_type, absent_names)
+                for name in absent_names:
+                    member_id = app.db.get_member_id_by_name(name)
+                    if member_id:
+                        event_acc = get_accusative(event_type)
+                        reason = f"Не пришёл на {event_acc}"
+                        app.db.add_warning(member_id, event_id, reason)
+                result_msg = "⚠️ Предупреждения получили:\n" + "\n".join(absent_names)
+            else:
+                result_msg = "✅ Все участники присутствовали"
+
+            app.refresh_list()
+        except Exception as e:
+            # В случае ошибки разблокируем кнопку и покажем сообщение
+            messagebox.showerror("Ошибка", f"Не удалось завершить событие: {str(e)}")
+            btn_confirm.config(state='normal')
+            return  # не закрываем окно
+
+        # Успешное завершение – закрываем окно и показываем результат
         app.event_dialog_open = False
         dialog.destroy()
+        messagebox.showinfo("Результат события", result_msg)
 
     btn_confirm = ttk.Button(main_frame, text="Подтвердить", command=confirm, style='TButton')
     btn_confirm.pack(pady=10)
     dialog.bind('<Return>', confirm)
     btn_confirm.focus_set()
     dialog.bind('<Escape>', lambda e: on_close())
+
+    # Устанавливаем флаг, что окно открыто
+    app.event_dialog_open = True
 
 # ---------- Очистка истории ----------
 def clear_history(app):

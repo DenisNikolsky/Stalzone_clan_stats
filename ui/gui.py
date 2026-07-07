@@ -139,11 +139,25 @@ class ClanApp:
 
     # ---------- Обёртки для блокировки ----------
     def run_event_wrapper(self):
-        """Блокирует повторное открытие окна события"""
+        # Если флаг уже True, но окна нет – сбрасываем
         if self.event_dialog_open:
+            for child in self.root.winfo_children():
+                if isinstance(child, tk.Toplevel) and child.title() == "Проведение события":
+                    return  # окно есть, ничего не делаем
+            self.event_dialog_open = False  # сброс "залипшего" флага
+
+        members = self.db.get_all_members()
+        if not members:
+            messagebox.showinfo("Информация", "В клане нет участников")
             return
+
         self.event_dialog_open = True
-        run_event(self)  # Флаг будет сброшен внутри run_event при закрытии окна
+        try:
+            run_event(self)
+        except Exception as e:
+            # Если внутри run_event произошла ошибка – сбрасываем флаг
+            self.event_dialog_open = False
+            raise
 
     def edit_member_wrapper(self):
         """Блокирует повторное открытие окна редактирования"""
