@@ -254,7 +254,8 @@ class ClanApp:
             "- Сортировка и выделение (перетаскивание, Ctrl/Shift)\n"
             "- Контекстное меню (правая кнопка мыши)\n\n"
             "База данных: SQLite\n"
-            "OCR: Tesseract")
+            "OCR: Tesseract\n"
+            "Автор: Abibas_Karabas")
 
     # ---------- Закрытие ----------
     def on_closing(self):
