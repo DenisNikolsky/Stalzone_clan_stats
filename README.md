@@ -25,13 +25,10 @@
 
 ## 🚀 Установка и запуск
 
-1. **Клонируйте репозиторий:**
-   ```bash
-   git clone https://github.com/yourusername/clan-manager-stalcraft.git
-   cd clan-manager-stalcraft
-   ```
+1. **Установка:** <br>
+   Скачайте ClanManager в release
 2. **Запуск:** <br>
-Перейдите в папку dist и запустите ClanManager
+Запустите ClanManager
 
 **ВАЖНО!!!**
 При запуске создадится база данных Clan в том месте, где находится Clanmanager. Не паникуйте!
