@@ -3,35 +3,20 @@ from tkinter import ttk, messagebox, filedialog, simpledialog
 import re
 from ocr_helper import extract_text_from_image
 
-# ---------- Парсинг ника и реального имени (улучшен) ----------
+# ---------- Парсинг ника и реального имени ----------
 def parse_nick_and_real(raw_line):
-    """
-    Извлекает игровой ник и реальное имя из строки.
-    Ожидает формат: [Клан] Ник (Реальное имя) доп.текст
-    или [Клан] Ник доп.текст
-    Возвращает (nick, real_name) или (None, None)
-    """
     line = raw_line.strip()
     if not line:
         return None, None
-
-    # 1. Удаляем [Клан] (квадратные скобки с содержимым)
     line = re.sub(r'\[[^\]]*\]', '', line).strip()
-
-    # 2. Ищем любые скобки (реальное имя) – берём последние встреченные
     real_name = ""
     matches = re.findall(r'\(([^)]*)\)', line)
     if matches:
-        real_name = matches[-1].strip()  # берём последние скобки
-        # Удаляем все скобки из строки, чтобы они не мешали
+        real_name = matches[-1].strip()
         line = re.sub(r'\([^)]*\)', '', line).strip()
-
-    # 3. Теперь в line должен остаться ник (возможно с дополнительным текстом)
-    # Берём первое слово как ник
     parts = line.split()
     if parts:
         nick = parts[0]
-        # Очищаем ник от лишних символов, но оставляем буквы, цифры, _, ., -
         nick = re.sub(r'[^a-zA-Zа-яА-Я0-9_ .-]', '', nick).strip()
         if len(nick) >= 2:
             return nick, real_name
@@ -96,8 +81,6 @@ def add_from_photo(app):
     if not all_parsed:
         messagebox.showwarning("OCR", "Не найдено ни одного корректного ника")
         return
-
-    # Убираем дубликаты по нику, сохраняя первое непустое реальное имя
     unique = {}
     for nick, real in all_parsed:
         if nick not in unique:
@@ -105,46 +88,39 @@ def add_from_photo(app):
         elif unique[nick] == "" and real:
             unique[nick] = real
     parsed = list(unique.items())
-
     preview = "\n".join([f"{n} ({r})" if r else n for n, r in parsed[:10]])
     if len(parsed) > 10:
         preview += f"\n... и ещё {len(parsed)-10}"
     if not messagebox.askyesno("Подтверждение", f"Будет добавлено/обновлено {len(parsed)} участников:\n\n{preview}"):
         return
-
     added = 0
     updated = 0
     skipped = 0
     for nick, real in parsed:
         existing = app.db.get_member(nick)
         if existing:
-            # Если участник уже есть, но реальное имя пустое, а у нас есть real – обновляем
             if existing['real_name'] == "" and real:
                 app.db.update_member(nick, nick, real, existing['role'])
                 updated += 1
             else:
                 skipped += 1
         else:
-            # Новый участник
             if app.db.add_member(nick, "рядовой", real):
                 added += 1
             else:
                 skipped += 1
-
     app.refresh_list()
     messagebox.showinfo("Результат",
                         f"Добавлено новых: {added}\n"
                         f"Обновлено (добавлено реальное имя): {updated}\n"
-                        f"Пропущено (уже существует и имя не пустое): {skipped}")
+                        f"Пропущено: {skipped}")
 
-# ---------- Редактирование участника ----------
-def edit_member_dialog(app):
-    selected = app.tree.selection()
-    if not selected:
-        messagebox.showerror("Ошибка", "Выберите участника для редактирования")
+# ---------- Редактирование участника (с сохранением сортировки) ----------
+def edit_member_dialog(app, item):
+    if not item:
+        messagebox.showerror("Ошибка", "Выберите участника")
         return
-    item = selected[0]
-    display, old_role, _ = app.tree.item(item, "values")
+    display, old_role, warnings = app.tree.item(item, "values")
     if " (" in display:
         old_name = display.split(" (")[0]
         old_real = display.split(" (")[1].rstrip(")")
@@ -158,6 +134,11 @@ def edit_member_dialog(app):
     dialog.transient(app.root)
     dialog.grab_set()
     app.theme_manager.apply_to_window(dialog)
+
+    def on_close():
+        app.edit_dialog_open = False
+        dialog.destroy()
+    dialog.protocol("WM_DELETE_WINDOW", on_close)
 
     ttk.Label(dialog, text="Игровой ник:").grid(row=0, column=0, padx=5, pady=5)
     entry_name = ttk.Entry(dialog, width=20)
@@ -186,7 +167,10 @@ def edit_member_dialog(app):
             messagebox.showerror("Ошибка", f"Участник с ником '{new_name}' уже существует")
             return
         app.db.update_member(old_name, new_name, new_real, new_role)
-        app.refresh_list()
+        # Обновляем только одну строку, чтобы сохранить сортировку
+        new_display = f"{new_name} ({new_real})" if new_real else new_name
+        app.tree.item(item, values=(new_display, new_role, warnings))
+        app.edit_dialog_open = False
         dialog.destroy()
 
     ttk.Button(dialog, text="Сохранить", command=save_edit).grid(row=3, column=0, columnspan=2, pady=10)

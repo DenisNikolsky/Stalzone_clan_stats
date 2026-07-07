@@ -3,34 +3,26 @@ from tkinter import ttk, messagebox, filedialog
 from datetime import datetime
 from ocr_helper import extract_text_from_image
 
-# ---------- Вспомогательная функция для склонения ----------
 def get_accusative(event_type):
-    """
-    Возвращает событие в винительном падеже для фразы "не пришёл на ..."
-    """
-    # Словарь исключений
+    """Возвращает событие в винительном падеже для фразы 'не пришёл на ...'"""
     exceptions = {
         "Потасовка": "Потасовку",
-        "Турнир": "Турнир",       # не склоняется? Лучше оставить как есть
-        "Gold Drop": "Gold Drop", # не склоняется
-        "Другое": "Другое"        # не склоняется
+        "Турнир": "Турнир",
+        "Gold Drop": "Gold Drop",
+        "Другое": "Другое"
     }
-    # Проверяем, есть ли в словаре
-    if event_type in exceptions:
-        return exceptions[event_type]
-    # Если не найдено, возвращаем как есть (или можно попробовать автоматически,
-    # но для простоты оставляем)
-    return event_type
+    return exceptions.get(event_type, event_type)
 
 # ---------- Проведение события ----------
 def run_event(app):
+    if app.event_dialog_open:
+        return
     members = app.db.get_all_members()
     if not members:
         messagebox.showinfo("Информация", "В клане нет участников")
         return
 
     weekday = datetime.now().weekday()
-    # По умолчанию ставим "Турнир" в среду, четверг, пятницу, иначе "Потасовка"
     default_event = "Турнир" if weekday in (2, 3, 4) else "Потасовка"
 
     dialog = tk.Toplevel(app.root)
@@ -39,6 +31,11 @@ def run_event(app):
     dialog.transient(app.root)
     dialog.grab_set()
     app.theme_manager.apply_to_window(dialog)
+
+    def on_close():
+        app.event_dialog_open = False
+        dialog.destroy()
+    dialog.protocol("WM_DELETE_WINDOW", on_close)
 
     main_frame = ttk.Frame(dialog, style='TFrame')
     main_frame.pack(fill="both", expand=True, padx=10, pady=10)
@@ -72,7 +69,6 @@ def run_event(app):
         else:
             messagebox.showwarning("OCR", "Не найдено ни одного ника")
 
-    # Акцентная кнопка для загрузки фото
     style = ttk.Style()
     style.configure('Accent.TButton', foreground='white', background='#3a6ea5', font=('Segoe UI', 10, 'bold'))
     style.map('Accent.TButton', background=[('active', '#4a7eb5')])
@@ -121,7 +117,6 @@ def run_event(app):
             for name in absent_names:
                 member_id = app.db.get_member_id_by_name(name)
                 if member_id:
-                    # Используем правильное склонение
                     event_acc = get_accusative(event_type)
                     reason = f"Не пришёл на {event_acc}"
                     app.db.add_warning(member_id, event_id, reason)
@@ -129,14 +124,14 @@ def run_event(app):
         else:
             messagebox.showinfo("Информация", "Все участники присутствовали")
         app.refresh_list()
+        app.event_dialog_open = False
         dialog.destroy()
 
     btn_confirm = ttk.Button(main_frame, text="Подтвердить", command=confirm, style='TButton')
     btn_confirm.pack(pady=10)
     dialog.bind('<Return>', confirm)
     btn_confirm.focus_set()
-    dialog.bind('<Escape>', lambda e: dialog.destroy())
-
+    dialog.bind('<Escape>', lambda e: on_close())
 
 # ---------- Очистка истории ----------
 def clear_history(app):
@@ -156,7 +151,6 @@ def clear_history(app):
     except Exception as e:
         conn.rollback()
         messagebox.showerror("Ошибка", f"Не удалось очистить историю: {str(e)}")
-
 
 # ---------- История предупреждений ----------
 def show_warning_history(app, event=None):
@@ -203,7 +197,6 @@ def show_warning_history(app, event=None):
 
     for w in warnings:
         tree.insert("", "end", values=(w['date'], w['event_type'], w['comment']))
-
 
 # ---------- История событий ----------
 def show_history(app):

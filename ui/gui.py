@@ -22,6 +22,10 @@ class ClanApp:
         self.db = Database()
         self.theme_manager = ThemeManager(self.root)
 
+        # Флаги блокировки для предотвращения повторных действий
+        self.event_dialog_open = False
+        self.edit_dialog_open = False
+
         self.create_menu()
         self.create_widgets()
         self.create_context_menus()
@@ -40,14 +44,14 @@ class ClanApp:
         members_menu.add_command(label="Добавить нового (вручную)", command=lambda: add_member_dialog(self))
         members_menu.add_command(label="Добавить из фото", command=lambda: add_from_photo(self))
         members_menu.add_separator()
-        members_menu.add_command(label="Редактировать выбранного", command=lambda: edit_member_dialog(self))
+        members_menu.add_command(label="Редактировать выбранного", command=self.edit_member_wrapper)
         members_menu.add_command(label="Удалить выбранных", command=lambda: remove_members(self))
         members_menu.add_separator()
         members_menu.add_command(label="Обновить список", command=self.refresh_list)
 
         events_menu = Menu(menubar, tearoff=0)
         menubar.add_cascade(label="События", menu=events_menu)
-        events_menu.add_command(label="Провести событие", command=lambda: run_event(self))
+        events_menu.add_command(label="Провести событие", command=self.run_event_wrapper)
         events_menu.add_command(label="История событий", command=lambda: show_history(self))
         events_menu.add_separator()
         events_menu.add_command(label="История предупреждений (выбранного)", command=lambda: show_warning_history(self))
@@ -98,14 +102,12 @@ class ClanApp:
 
     # ---------- Статусная строка ----------
     def create_status_bar(self):
-        """Создаёт строку статуса внизу окна"""
         self.status_var = tk.StringVar()
         self.status_var.set("Всего участников: 0")
         status_label = ttk.Label(self.root, textvariable=self.status_var, style='TLabel', relief='sunken', anchor='w')
         status_label.pack(side='bottom', fill='x', padx=5, pady=2)
 
     def update_status(self):
-        """Обновляет строку статуса: количество участников"""
         members = self.db.get_all_members()
         count = len(members)
         self.status_var.set(f"Всего участников: {count}")
@@ -113,7 +115,7 @@ class ClanApp:
     # ---------- Контекстные меню ----------
     def create_context_menus(self):
         self.member_menu = Menu(self.root, tearoff=0)
-        self.member_menu.add_command(label="Редактировать", command=lambda: edit_member_dialog(self))
+        self.member_menu.add_command(label="Редактировать", command=self.edit_member_wrapper)
         self.member_menu.add_command(label="Удалить", command=lambda: remove_members(self))
         self.member_menu.add_separator()
         self.member_menu.add_command(label="Выдать предупреждение", command=lambda: add_manual_warning(self))
@@ -135,6 +137,26 @@ class ClanApp:
             self.tree.selection_remove(self.tree.selection())
             self.empty_menu.post(event.x_root, event.y_root)
 
+    # ---------- Обёртки для блокировки ----------
+    def run_event_wrapper(self):
+        """Блокирует повторное открытие окна события"""
+        if self.event_dialog_open:
+            return
+        self.event_dialog_open = True
+        run_event(self)  # Флаг будет сброшен внутри run_event при закрытии окна
+
+    def edit_member_wrapper(self):
+        """Блокирует повторное открытие окна редактирования"""
+        if self.edit_dialog_open:
+            return
+        selected = self.tree.selection()
+        if not selected:
+            messagebox.showerror("Ошибка", "Выберите участника для редактирования")
+            return
+        self.edit_dialog_open = True
+        item = selected[0]
+        edit_member_dialog(self, item)  # Флаг будет сброшен внутри диалога
+
     # ---------- Обновление списка ----------
     def refresh_list(self):
         for item in self.tree.get_children():
@@ -142,7 +164,7 @@ class ClanApp:
         for name, real_name, role, warnings in self.db.get_all_members():
             display_name = f"{name} ({real_name})" if real_name else name
             self.tree.insert("", "end", values=(display_name, role, warnings))
-        self.update_status()  # обновляем счётчик
+        self.update_status()
 
     # ---------- Настройка шрифта ----------
     def change_font(self):
@@ -184,7 +206,8 @@ class ClanApp:
         filename = filedialog.asksaveasfilename(defaultextension=".xlsx", filetypes=[("Excel files", "*.xlsx")])
         if filename:
             try:
-                self.db.export_to_excel(filename)
+                from ui.excel_utils import export_to_excel
+                export_to_excel(self.db, filename)
                 messagebox.showinfo("Экспорт", f"Экспортировано в {filename}")
             except Exception as e:
                 messagebox.showerror("Ошибка", str(e))
@@ -193,7 +216,8 @@ class ClanApp:
         filename = filedialog.askopenfilename(filetypes=[("Excel files", "*.xlsx")])
         if filename:
             try:
-                count = self.db.import_from_excel(filename)
+                from ui.excel_utils import import_from_excel
+                count = import_from_excel(self.db, filename)
                 self.refresh_list()
                 messagebox.showinfo("Импорт", f"Импортировано {count} участников")
             except Exception as e:
@@ -203,14 +227,14 @@ class ClanApp:
     def show_about(self):
         messagebox.showinfo("О программе",
             "Управление кланом Stalcraft\n\n"
-            "Версия 3.1\n"
-            "- Добавлена статусная строка с количеством участников\n"
-            "- Очистка истории событий\n"
-            "- Массовое добавление/удаление предупреждений\n"
-            "- Улучшенная кнопка загрузки фото в событиях\n\n"
+            "Версия 3.2\n"
+            "Новое:\n"
+            "- Блокировка повторных действий (события, редактирование)\n"
+            "- Редактирование без сброса сортировки\n"
+            "- Импорт/экспорт в Excel\n\n"
             "Особенности:\n"
             "- Добавление участников вручную и из фото (OCR)\n"
-            "- Проведение событий (Турник, Gold Drop, Потасовка и др.)\n"
+            "- Проведение событий (Турнир, Gold Drop, Потасовка и др.)\n"
             "- Автоматическое и ручное управление предупреждениями\n"
             "- История событий и предупреждений\n"
             "- Сортировка и выделение (перетаскивание, Ctrl/Shift)\n"
