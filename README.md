@@ -30,7 +30,10 @@
    git clone https://github.com/yourusername/clan-manager-stalcraft.git
    cd clan-manager-stalcraft
    ```
-2. **Запуск**
-   Перейдите в папку dist и запустите ClanManager
+2. **Запуск:** <br>
+Перейдите в папку dist и запустите ClanManager
+
+**ВАЖНО!!!**
+При запуске создадится база данных Clan в том месте, где находится Clanmanager. Не паникуйте!
 
 Профит!
